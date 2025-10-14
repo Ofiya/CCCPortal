@@ -1,0 +1,6 @@
+@MembershipAppBEAPI_HostAddress = http://localhost:5027
+
+GET {{MembershipAppBEAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

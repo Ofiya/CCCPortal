@@ -1,0 +1,23 @@
+﻿## .NET ##
+**/bin/
+**/obj/
+*.user
+*.vs
+.vscode/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# NuGet
+**/packages/
+
+# Config files (keep only base appsettings.json)
+appsettings.Development.json
+appsettings.production.json
+
+# OS files
+.DS_Store
+Thumbs.db
