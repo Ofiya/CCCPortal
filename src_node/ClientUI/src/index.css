@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+.sidebar {
+  width: 250px;
+  transition: all 0.3s;
+}
+
+.sidebar.collapsed {
+  width: 70px;
+}
+
+.content-area {
+  transition: all 0.3s;
+  margin-left: 250px;
+}
+
+.sidebar.collapsed~.content-area {
+  margin-left: 70px;
+}
+
+.sidebar-link span {
+  transition: opacity 0.3s;
+}
+
+.sidebar.collapsed .sidebar-link span {
+  opacity: 0;
+  display: none;
+}
+
+.sidebar.collapsed .logo-text {
+  opacity: 0;
+  display: none;
+}
+
+.autosave-indicator {
+  transition: opacity 0.3s;
+}
+
+.autosave-indicator.saving {
+  opacity: 1;
+}
+
+.autosave-indicator.saved {
+  opacity: 0.6;
+}
+
+.autosave-indicator.failed {
+  opacity: 1;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.modal {
+  transition: opacity 0.3s;
+}
+
+.floating-button {
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.floating-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+}
+
+.status-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-badge.flagged {
+  background-color: #FEF2F2;
+  color: #B91C1C;
+}
+
+.status-badge.ok {
+  background-color: #ECFDF5;
+  color: #047857;
+}
+
+/* Dropdown styles */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  margin-top: 0.5rem;
+  min-width: 10rem;
+  z-index: 10;
+}
+
+.dropdown.open .dropdown-menu {
+  display: block;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Bulk selection styles */
+.bulk-selection-active {
+  background-color: #EFF6FF;
+}
+
+.attendance-checkbox:checked {
+  background-color: #10B981;
+  border-color: #10B981;
+}
+
+/* Loading states */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.btn-loading {
+  position: relative;
+  color: transparent;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-right-color: transparent;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
