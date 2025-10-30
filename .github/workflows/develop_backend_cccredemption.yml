@@ -29,6 +29,7 @@ jobs:
 
       - name: dotnet publish
         run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+        working-directory: src_net
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -55,3 +56,4 @@ jobs:
           package: .
 
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F2FE8677A9AC4F8A931830A2CA9B0C42 }}
+
