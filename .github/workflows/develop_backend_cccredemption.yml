@@ -25,6 +25,7 @@ jobs:
 
       - name: Build with dotnet
         run: dotnet build --configuration Release
+        working-directory: src_net
 
       - name: dotnet publish
         run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
@@ -52,4 +53,5 @@ jobs:
           app-name: 'CCCRedemption'
           slot-name: 'Production'
           package: .
+
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F2FE8677A9AC4F8A931830A2CA9B0C42 }}
