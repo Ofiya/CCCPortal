@@ -28,20 +28,20 @@ namespace MembershipAppBEAPI.Controllers
 
                 // Create admin user if not exists
                 var createUserQuery = @"
-                    IF NOT EXISTS (SELECT 1 FROM Users WHERE Email = 'admin@cccredemption.org')
+                    IF NOT EXISTS (SELECT 1 FROM Members WHERE Email = 'admin@cccredemption.org')
                     BEGIN
-                        INSERT INTO Users (FullName, Email, PasswordHash, RoleLevel, IsActive, CreatedAt)
+                        INSERT INTO Members (FullName, Email, PasswordHash, RoleLevel, IsActive, CreatedAt)
                         VALUES ('System Administrator', 'admin@cccredemption.org', 'admin123', 3, 1, GETUTCDATE())
                     END";
 
                 await using var userCommand = new SqlCommand(createUserQuery, connection);
                 await userCommand.ExecuteNonQueryAsync();
 
-                // Create default settings if not exists
+                //Create default settings if not exists
                 var createSettingsQuery = @"
-                    IF NOT EXISTS (SELECT 1 FROM Settings)
+                    IF NOT EXISTS (SELECT 1 FROM Churches)
                     BEGIN
-                        INSERT INTO Settings (ChurchName, ChurchAddress, ChurchPhone, ChurchEmail)
+                        INSERT INTO Churches (ChurchName, ChurchAddress, ChurchPhone, ChurchEmail)
                         VALUES ('CCC Redemption Parish', '787 Toronto Street, Winnipeg, Manitoba, R3E 1Z7', '+1-204-555-0123', 'info@cccredemption.org')
                     END";
 

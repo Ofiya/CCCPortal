@@ -1,16 +1,31 @@
+using MembershipAppBEAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features; // ADD THIS for FormOptions
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
 using Microsoft.Data.SqlClient; // ADD THIS
+using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
+using Microsoft.OpenApi.Models;
+using Microsoft.IdentityModel.Tokens;
 using System.Data; // ADD THIS
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Membership API",
+        Version = "v1",
+        Description = "API documentation for the MembershipAppBEAPI project."
+    });
+});
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -52,6 +67,8 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+
 
 // Create upload directories
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
@@ -103,15 +120,23 @@ app.MapGet("/health", async (IConfiguration config) =>
         return Results.Problem($"Unhealthy: {ex.Message}");
     }
 });
+    
+app.MapScalarApiReference(options =>
+{
+    options.Title = "Membership API Docs";
+});
 
 // Middleware pipeline
 app.UseCors("AllowFrontend");
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+//if (app.Environment.IsDevelopment())
+//{
+//    app.UseSwagger();
+//    app.UseSwaggerUI();
+//}
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
