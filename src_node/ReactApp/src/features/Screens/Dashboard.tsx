@@ -1,5 +1,13 @@
+import { useNavigate } from "react-router"
+import { useAxios } from "../../utils/hooks/useAxios";
+// import "../../utils/main"
 
 const Dashboard = () => {
+    
+    const navigate = useNavigate()
+    const { data, loading, error } = useAxios("Dashboard/stats");
+    console.log(data, loading, error)
+
     return (
         <div id="dashboard-page" className="page p-6">
             <div className="mb-6">
@@ -9,7 +17,7 @@ const Dashboard = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 {/* <!-- Total Members Card --> */}
-                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow">
+                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/members')}>
                     <div className="flex items-center">
                         <div className="rounded-full bg-blue-100 p-3">
                             <i className="fas fa-users text-blue-600"></i>
@@ -22,7 +30,7 @@ const Dashboard = () => {
                 </div>
 
                 {/* <!-- Attendance Rate Card --> */}
-                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow">
+                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/attendance')}>
                     <div className="flex items-center">
                         <div className="rounded-full bg-green-100 p-3">
                             <i className="fas fa-chart-line text-green-600"></i>
@@ -35,7 +43,7 @@ const Dashboard = () => {
                 </div>
 
                 {/* <!-- Flagged Members Card --> */}
-                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow">
+                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/members')}>
                     <div className="flex items-center">
                         <div className="rounded-full bg-red-100 p-3">
                             <i className="fas fa-flag text-red-600"></i>
@@ -48,7 +56,7 @@ const Dashboard = () => {
                 </div>
 
                 {/* <!-- Expiring Documents Card --> */}
-                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow">
+                <div className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/members')}>
                     <div className="flex items-center">
                         <div className="rounded-full bg-yellow-100 p-3">
                             <i className="fas fa-exclamation-triangle text-yellow-600"></i>

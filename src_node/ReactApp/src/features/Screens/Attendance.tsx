@@ -1,4 +1,8 @@
+import { useAxios } from "../../utils/hooks/useAxios";
+
 const Attendance = () => {
+        const { data, loading, error } = useAxios("members");
+        console.log(data, loading, error)
     return (
         <div id="attendance-page" className="page p-6">
             <div className="mb-6">

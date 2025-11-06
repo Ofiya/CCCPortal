@@ -1,4 +1,9 @@
+import { useAxios } from "../../utils/hooks/useAxios";
+
 const Settings = () => {
+      const { data, loading, error } = useAxios("Users");
+      console.log(data, loading, error)
+      
     return (
        <div id="settings-page" className="page p-6 admin-only-content">
           <div className="mb-6">

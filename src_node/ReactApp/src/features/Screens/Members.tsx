@@ -1,5 +1,19 @@
+import { useState } from "react";
+// import { useNavigate } from "react-router";
+import CSVModal from "../../components/modals/CSVModal";
+import AppDialog from "../../components/modals/AppDialog";
+import MemberModal from "../../components/modals/MemberModal";
+import { useAxios } from "../../utils/hooks/useAxios";
 
 const Members = () => {
+
+    const [open, setOpen] = useState(false);
+    const [mamberOpen, setMemberOpen] = useState(false);
+
+        const { data, loading, error } = useAxios("members");
+        console.log(data, loading, error)
+
+
     return (
         <div id="members-page" className="page p-6">
             <div className="mb-6 flex justify-between items-center">
@@ -8,10 +22,10 @@ const Members = () => {
                     <p className="text-gray-600">Manage and view all church members</p>
                 </div>
                 <div className="flex space-x-3">
-                    <button id="upload-csv-btn" className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md flex items-center">
+                    <button id="upload-csv-btn" onClick={() => setOpen(true)} className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md flex items-center">
                         <i className="fas fa-file-csv mr-2"></i> Upload CSV
                     </button>
-                    <button id="add-member-btn" className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md flex items-center">
+                    <button id="add-member-btn" onClick={() => setMemberOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md flex items-center">
                         <i className="fas fa-plus mr-2"></i> Add Member
                     </button>
                 </div>
@@ -24,9 +38,9 @@ const Members = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
                         <div className="relative">
                             <input type="text" id="member-search" placeholder="Search members..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3">
-                                    <i className="fas fa-search text-gray-400"></i>
-                                </div>
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                                <i className="fas fa-search text-gray-400"></i>
+                            </div>
                         </div>
                     </div>
                     <div>
@@ -93,8 +107,22 @@ const Members = () => {
             <button id="add-member-floating-btn" className="floating-button md:hidden fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center">
                 <i className="fas fa-plus text-xl"></i>
             </button>
+            <AppDialog
+                isOpen={open}
+                onClose={() => setOpen(false)}
+            >
+
+                <CSVModal />
+            </AppDialog>
+            <AppDialog
+                isOpen={mamberOpen}
+                onClose={() => setMemberOpen(false)}
+            >
+
+                <MemberModal />
+            </AppDialog>
         </div>
-        )
+    )
 }
 
 export default Members

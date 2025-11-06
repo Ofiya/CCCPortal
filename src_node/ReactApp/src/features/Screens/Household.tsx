@@ -1,4 +1,8 @@
+import { useAxios } from "../../utils/hooks/useAxios";
+
 const Household = () => {
+        const { data, loading, error } = useAxios("Households");
+        console.log(data, loading, error)
     return (
         <div id="households-page" className="page p-6">
             <div className="mb-6 flex justify-between items-center">
