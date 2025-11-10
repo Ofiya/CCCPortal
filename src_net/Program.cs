@@ -58,6 +58,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:3000", // React dev
+                "http://localhost:5173",
                 "https://polite-mushroom-0be379810.1.azurestaticapps.net" // Your Azure Static Web App
             )
             .AllowAnyHeader()
