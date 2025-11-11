@@ -1,10 +1,16 @@
+using MembershipAppBEAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using System;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace MembershipAppBEAPI.Controllers
 {
@@ -12,11 +18,13 @@ namespace MembershipAppBEAPI.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
+        private readonly ApplicationDbContext _dbContext;
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IConfiguration configuration, ILogger<AuthController> logger)
+        public AuthController(ApplicationDbContext dbContext, IConfiguration configuration, ILogger<AuthController> logger)
         {
+            _dbContext = dbContext;
             _configuration = configuration;
             _logger = logger;
         }
@@ -31,65 +39,65 @@ namespace MembershipAppBEAPI.Controllers
                     return BadRequest(new { error = "Email and password are required" });
                 }
 
-                await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                await connection.OpenAsync();
+                // Normalize email input
+                var normalizedEmail = request.Email.Trim().ToLower();
 
-                var query = @"
-                    SELECT Id, FullName, Email, PasswordHash, RoleLevel, IsActive
-                    FROM Users 
-                    WHERE Email = @Email AND IsActive = 1";
+                //query DB
+                var user = await _dbContext.Users
+                                .AsNoTracking()
+                                .Where(u => u.Email.ToLower() == normalizedEmail && u.IsActive)
+                                .Select(u => new
+                                {
+                                    u.Id,
+                                    u.FullName,
+                                    u.Email,
+                                    u.PasswordHash,
+                                    u.RoleLevel,
+                                    u.IsActive
+                                })
+                                .FirstOrDefaultAsync();
 
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddWithValue("@Email", request.Email.Trim().ToLower());
-
-                await using var reader = await command.ExecuteReaderAsync();
-                
-                if (!await reader.ReadAsync())
+                if (user == null)
                 {
                     _logger.LogWarning("Login failed: User not found - {Email}", request.Email);
-                    return Unauthorized(new { error = "Invalid email or password" });
+                    return Unauthorized(new { error = "Invalid email address" });
                 }
 
-                // Read user data
-                var userId = reader.GetInt32(reader.GetOrdinal("Id"));
-                var fullName = reader.GetString(reader.GetOrdinal("FullName"));
-                var email = reader.GetString(reader.GetOrdinal("Email"));
-                var storedHash = reader.GetString(reader.GetOrdinal("PasswordHash"));
-                var roleLevel = reader.GetInt32(reader.GetOrdinal("RoleLevel"));
-                var isActive = reader.GetBoolean(reader.GetOrdinal("IsActive"));
-
-                await reader.CloseAsync();
-
-                // Verify password
+                //Verify password
                 var inputHash = HashPassword(request.Password);
-                if (inputHash != storedHash)
+                if (inputHash != user.PasswordHash)
                 {
-                    _logger.LogWarning("Login failed: Invalid password for user {UserId}", userId);
-                    return Unauthorized(new { error = "Invalid email or password" });
+                    _logger.LogWarning("Login failed: Invalid password for user {UserId}", user.Id);
+                    return Unauthorized(new { error = "Invalid password" });
                 }
 
                 // Update last login
-                var updateQuery = "UPDATE Users SET LastLogin = GETUTCDATE() WHERE Id = @Id";
-                await using var updateCommand = new SqlCommand(updateQuery, connection);
-                updateCommand.Parameters.AddWithValue("@Id", userId);
-                await updateCommand.ExecuteNonQueryAsync();
+                var userEntity = await _dbContext.Users.FindAsync(user.Id);
+                if (userEntity != null)
+                {
+                    userEntity.LastLogin = DateTime.UtcNow;
+                    _dbContext.Users.Update(userEntity);
+                    await _dbContext.SaveChangesAsync();
+                }
+
 
                 // Generate JWT token
-                var token = GenerateJwtToken(userId, fullName, email, roleLevel);
+                var token = GenerateJwtToken(user.Id, user.FullName, user.Email, user.RoleLevel);
 
                 var response = new
                 {
-                    token = token,
+                    token,
                     user = new
                     {
-                        id = userId,
-                        name = fullName,
-                        email = email,
-                        roleLevel = roleLevel
+                        id = user.Id,
+                        name = user.FullName,
+                        email = user.Email,
+                        roleLevel = user.RoleLevel
                     }
                 };
+                
 
-                _logger.LogInformation("User {UserId} logged in successfully", userId);
+                _logger.LogInformation("User {UserId} logged in successfully", user.Id);
                 return Ok(response);
             }
             catch (Exception ex)

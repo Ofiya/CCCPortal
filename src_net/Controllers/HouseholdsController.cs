@@ -1,6 +1,8 @@
+using MembershipAppBEAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 
 namespace MembershipAppBEAPI.Controllers
@@ -10,11 +12,13 @@ namespace MembershipAppBEAPI.Controllers
     [Authorize]
     public class HouseholdsController : ControllerBase
     {
+        private readonly ApplicationDbContext _dbContext;
         private readonly IConfiguration _configuration;
         private readonly ILogger<HouseholdsController> _logger;
 
-        public HouseholdsController(IConfiguration configuration, ILogger<HouseholdsController> logger)
+        public HouseholdsController(ApplicationDbContext dbContext, IConfiguration configuration, ILogger<HouseholdsController> logger)
         {
+            _dbContext = dbContext;
             _configuration = configuration;
             _logger = logger;
         }
@@ -24,39 +28,32 @@ namespace MembershipAppBEAPI.Controllers
         {
             try
             {
-                await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                await connection.OpenAsync();
-
-                var query = @"
-                    SELECT 
-                        h.Id, h.Name, h.Address, h.PrimaryPhone, h.Email,
-                        m.FullName as HeadName,
-                        (SELECT COUNT(*) FROM Members WHERE HouseholdId = h.Id AND IsActive = 1) as MemberCount
-                    FROM Households h
-                    LEFT JOIN Members m ON h.HeadMemberId = m.Id
-                    WHERE h.IsActive = 1
-                    AND (@Search IS NULL OR h.Name LIKE '%' + @Search + '%' OR m.FullName LIKE '%' + @Search + '%' OR h.Address LIKE '%' + @Search + '%')
-                    ORDER BY h.Name";
-
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddWithValue("@Search", string.IsNullOrEmpty(search) ? (object)DBNull.Value : search);
-                
-                await using var reader = await command.ExecuteReaderAsync();
-                var households = new List<object>();
-
-                while (await reader.ReadAsync())
-                {
-                    households.Add(new
+                var query = _dbContext.Households
+                    .Where(h => h.IsActive)
+                    .Include(h => h.HeadMember)
+                    .Select(h => new
                     {
-                        id = reader.GetInt32(reader.GetOrdinal("Id")),
-                        name = reader.GetString(reader.GetOrdinal("Name")),
-                        headName = reader.IsDBNull(reader.GetOrdinal("HeadName")) ? "Not Assigned" : reader.GetString(reader.GetOrdinal("HeadName")),
-                        address = reader.GetString(reader.GetOrdinal("Address")),
-                        primaryPhone = reader.GetString(reader.GetOrdinal("PrimaryPhone")),
-                        email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
-                        memberCount = reader.GetInt32(reader.GetOrdinal("MemberCount"))
+                        h.Id,
+                        h.Name,
+                        h.Address,
+                        h.PrimaryPhone,
+                        h.Email,
+                        HeadName = h.HeadMember != null ? h.HeadMember.FullName : "Not Assigned",
+                        MemberCount = _dbContext.Members.Count(m => m.HouseholdId == h.Id && m.IsActive)
                     });
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    var searchTerm = search.Trim().ToLower();
+                    query = query.Where(h =>
+                        h.Name.ToLower().Contains(searchTerm) ||
+                        h.Address.ToLower().Contains(searchTerm) ||
+                        h.HeadName.ToLower().Contains(searchTerm));
                 }
+
+                var households = await query
+                    .OrderBy(h => h.Name)
+                    .ToListAsync();
 
                 return Ok(households);
             }
@@ -70,60 +67,52 @@ namespace MembershipAppBEAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateHousehold([FromBody] HouseholdCreateRequest request)
         {
+            if (request == null)
+                return BadRequest(new { error = "Request body is required" });
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { error = "Household name is required" });
+
+            if (string.IsNullOrWhiteSpace(request.Address))
+                return BadRequest(new { error = "Address is required" });
+
             try
             {
-                if (request == null)
-                    return BadRequest(new { error = "Request body is required" });
-
-                if (string.IsNullOrWhiteSpace(request.Name))
-                    return BadRequest(new { error = "Household name is required" });
-
-                if (string.IsNullOrWhiteSpace(request.Address))
-                    return BadRequest(new { error = "Address is required" });
-
-                await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                await connection.OpenAsync();
-
-                var query = @"
-                    INSERT INTO Households (Name, HeadMemberId, Address, PrimaryPhone, Email, Notes, IsActive, CreatedAt)
-                    OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Address, INSERTED.PrimaryPhone, INSERTED.Email, INSERTED.HeadMemberId
-                    VALUES (@Name, @HeadMemberId, @Address, @PrimaryPhone, @Email, @Notes, 1, GETUTCDATE())";
-
-                await using var command = new SqlCommand(query, connection);
-                
-                command.Parameters.AddWithValue("@Name", request.Name.Trim());
-                command.Parameters.AddWithValue("@HeadMemberId", request.HeadMemberId > 0 ? (object)request.HeadMemberId : DBNull.Value);
-                command.Parameters.AddWithValue("@Address", request.Address.Trim());
-                command.Parameters.AddWithValue("@PrimaryPhone", request.PrimaryPhone?.Trim() ?? "");
-                command.Parameters.AddWithValue("@Email", string.IsNullOrWhiteSpace(request.Email) ? (object)DBNull.Value : request.Email.Trim());
-                command.Parameters.AddWithValue("@Notes", string.IsNullOrWhiteSpace(request.Notes) ? (object)DBNull.Value : request.Notes.Trim());
-
-                await using var reader = await command.ExecuteReaderAsync();
-                
-                if (await reader.ReadAsync())
+                var household = new Household
                 {
-                    var household = new
-                    {
-                        id = reader.GetInt32(reader.GetOrdinal("Id")),
-                        name = reader.GetString(reader.GetOrdinal("Name")),
-                        address = reader.GetString(reader.GetOrdinal("Address")),
-                        primaryPhone = reader.GetString(reader.GetOrdinal("PrimaryPhone")),
-                        email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
-                        headMemberId = reader.IsDBNull(reader.GetOrdinal("HeadMemberId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("HeadMemberId"))
-                    };
-                    
-                    return StatusCode(201, household);
-                }
+                    Name = request.Name.Trim(),
+                    HeadMemberId = request.HeadMemberId > 0 ? request.HeadMemberId : null,
+                    Address = request.Address.Trim(),
+                    PrimaryPhone = request.PrimaryPhone?.Trim() ?? string.Empty,
+                    Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
+                    Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
 
-                return BadRequest(new { error = "Failed to create household" });
+                _dbContext.Households.Add(household);
+                await _dbContext.SaveChangesAsync();
+
+                var response = new
+                {
+                    household.Id,
+                    household.Name,
+                    household.Address,
+                    household.PrimaryPhone,
+                    household.Email,
+                    household.HeadMemberId
+                };
+
+                return StatusCode(201, response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to create household: {HouseholdName}", request?.Name);
+                _logger.LogError(ex, "Failed to create household: {HouseholdName}", request.Name);
                 return StatusCode(500, new { error = "Failed to create household" });
             }
         }
     }
+    
 
     public class HouseholdCreateRequest
     {

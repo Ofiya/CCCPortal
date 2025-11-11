@@ -4,6 +4,7 @@ using MembershipAppBEAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MembershipAppBEAPI.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251111155447_AddExtraTables")]
+    partial class AddExtraTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -42,9 +45,6 @@ namespace MembershipAppBEAPI.Migrations
                     b.Property<int>("MemberId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("MemberId1")
-                        .HasColumnType("int");
-
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -59,8 +59,6 @@ namespace MembershipAppBEAPI.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("MemberId1");
 
                     b.HasIndex("MemberId", "ServiceDate")
                         .IsUnique();
@@ -102,38 +100,14 @@ namespace MembershipAppBEAPI.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("HeadMemberId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("HeadMemberId1")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PrimaryPhone")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("HeadMemberId1");
 
                     b.ToTable("Households");
                 });
@@ -156,7 +130,9 @@ namespace MembershipAppBEAPI.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.Property<DateTime?>("DateJoined")
                         .HasColumnType("datetime2");
@@ -164,11 +140,18 @@ namespace MembershipAppBEAPI.Migrations
                     b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
                     b.Property<DateTime?>("DocumentExpiry")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Email")
-                        .HasColumnType("nvarchar(max)");
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -176,7 +159,8 @@ namespace MembershipAppBEAPI.Migrations
 
                     b.Property<string>("FullName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("Gender")
                         .HasColumnType("nvarchar(max)");
@@ -188,7 +172,9 @@ namespace MembershipAppBEAPI.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("IsFlagged")
                         .HasColumnType("bit");
@@ -213,7 +199,9 @@ namespace MembershipAppBEAPI.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.Property<int?>("WelfareMemberId")
                         .HasColumnType("int");
@@ -227,118 +215,16 @@ namespace MembershipAppBEAPI.Migrations
 
                     b.HasIndex("HouseholdId");
 
-                    b.HasIndex("WelfareMemberId");
-
                     b.ToTable("Members");
-                });
 
-            modelBuilder.Entity("MembershipAppBEAPI.Models.MemberFollowUp", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
+                    b.HasDiscriminator<string>("Discriminator").HasValue("Member");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("FollowUpDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("FollowedById")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("MemberId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("NextFollowUpDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int?>("Outcome")
-                        .HasMaxLength(100)
-                        .HasColumnType("int");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("RequiresFurtherFollowUp")
-                        .HasColumnType("bit");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FollowedById");
-
-                    b.HasIndex("MemberId");
-
-                    b.ToTable("MemberFollowUps");
-                });
-
-            modelBuilder.Entity("MembershipAppBEAPI.Models.Settings", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ChurchAddress")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ChurchEmail")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ChurchName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ChurchPhone")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Settings");
+                    b.UseTphMappingStrategy();
                 });
 
             modelBuilder.Entity("MembershipAppBEAPI.Models.User", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("FullName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
+                    b.HasBaseType("MembershipAppBEAPI.Models.Member");
 
                     b.Property<DateTime?>("LastLogin")
                         .HasColumnType("datetime2");
@@ -352,14 +238,7 @@ namespace MembershipAppBEAPI.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(1);
 
-                    b.Property<DateTime?>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Users");
+                    b.HasDiscriminator().HasValue("User");
                 });
 
             modelBuilder.Entity("MembershipAppBEAPI.Models.Attendance", b =>
@@ -370,20 +249,7 @@ namespace MembershipAppBEAPI.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("MembershipAppBEAPI.Models.Member", null)
-                        .WithMany("Attendance")
-                        .HasForeignKey("MemberId1");
-
                     b.Navigation("Member");
-                });
-
-            modelBuilder.Entity("MembershipAppBEAPI.Models.Household", b =>
-                {
-                    b.HasOne("MembershipAppBEAPI.Models.Member", "HeadMember")
-                        .WithMany()
-                        .HasForeignKey("HeadMemberId1");
-
-                    b.Navigation("HeadMember");
                 });
 
             modelBuilder.Entity("MembershipAppBEAPI.Models.Member", b =>
@@ -393,30 +259,7 @@ namespace MembershipAppBEAPI.Migrations
                         .HasForeignKey("HouseholdId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("MembershipAppBEAPI.Models.Member", "WelfareMember")
-                        .WithMany()
-                        .HasForeignKey("WelfareMemberId");
-
                     b.Navigation("Household");
-
-                    b.Navigation("WelfareMember");
-                });
-
-            modelBuilder.Entity("MembershipAppBEAPI.Models.MemberFollowUp", b =>
-                {
-                    b.HasOne("MembershipAppBEAPI.Models.User", "FollowedBy")
-                        .WithMany()
-                        .HasForeignKey("FollowedById");
-
-                    b.HasOne("MembershipAppBEAPI.Models.Member", "Member")
-                        .WithMany()
-                        .HasForeignKey("MemberId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FollowedBy");
-
-                    b.Navigation("Member");
                 });
 
             modelBuilder.Entity("MembershipAppBEAPI.Models.Household", b =>
@@ -426,8 +269,6 @@ namespace MembershipAppBEAPI.Migrations
 
             modelBuilder.Entity("MembershipAppBEAPI.Models.Member", b =>
                 {
-                    b.Navigation("Attendance");
-
                     b.Navigation("AttendanceRecords");
                 });
 #pragma warning restore 612, 618

@@ -1,10 +1,12 @@
+using CsvHelper;
+using CsvHelper.Configuration;
+using MembershipAppBEAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 using System.Globalization;
-using CsvHelper;
-using CsvHelper.Configuration;
 using System.Security.Claims;
 
 namespace MembershipAppBEAPI.Controllers
@@ -14,120 +16,77 @@ namespace MembershipAppBEAPI.Controllers
     [Authorize]
     public class MembersController : ControllerBase
     {
+        private readonly ApplicationDbContext _dbContext;
         private readonly IConfiguration _configuration;
         private readonly ILogger<MembersController> _logger;
 
-        public MembersController(IConfiguration configuration, ILogger<MembersController> logger)
+        public MembersController(ApplicationDbContext dbContext, IConfiguration configuration, ILogger<MembersController> logger)
         {
+            _dbContext = dbContext;
             _configuration = configuration;
             _logger = logger;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetMembers(
-            [FromQuery] string? search = null,
-            [FromQuery] string? gender = null,
-            [FromQuery] string? household = null,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<IActionResult> GetMembers([FromQuery] string? search = null, [FromQuery] string? gender = null, [FromQuery] string? household = null, [FromQuery] int page = 1, [FromQuery] int limit = 10)
         {
             // Validate input
             if (page < 1) page = 1;
             if (limit < 1 || limit > 100) limit = 10;
+            var skip = (page - 1) * limit;
 
-            var offset = (page - 1) * limit;
-
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var query = _dbContext.Members
+                    .Include(m => m.Household)
+                    .Include(m => m.WelfareMember)
+                    .Where(m => m.IsActive);
 
-                // Use parameterized queries to prevent SQL injection
-                var whereClauses = new List<string>();
-                var parameters = new List<SqlParameter>();
-
-                if (!string.IsNullOrEmpty(search))
+                if (!string.IsNullOrWhiteSpace(search))
                 {
-                    whereClauses.Add("(m.FullName LIKE '%' + @Search + '%' OR m.Email LIKE '%' + @Search + '%' OR m.PhoneNumber LIKE '%' + @Search + '%' OR m.FirstName LIKE '%' + @Search + '%' OR m.LastName LIKE '%' + @Search + '%')");
-                    parameters.Add(new SqlParameter("@Search", search));
+                    query = query.Where(m =>
+                        m.FullName.Contains(search) ||
+                        m.FirstName.Contains(search) ||
+                        m.LastName.Contains(search) ||
+                        m.Email.Contains(search) ||
+                        m.PhoneNumber.Contains(search));
                 }
 
-                if (!string.IsNullOrEmpty(gender))
+                if (!string.IsNullOrWhiteSpace(gender))
                 {
-                    whereClauses.Add("m.Gender = @Gender");
-                    parameters.Add(new SqlParameter("@Gender", gender));
+                    query = query.Where(m => m.Gender == gender);
                 }
 
-                if (!string.IsNullOrEmpty(household))
+                if (!string.IsNullOrWhiteSpace(household))
                 {
-                    whereClauses.Add("h.Name = @Household");
-                    parameters.Add(new SqlParameter("@Household", household));
+                    query = query.Where(m => m.Household != null && m.Household.Name == household);
                 }
 
-                // Add active member filter
-                whereClauses.Add("m.IsActive = 1");
+                var totalCount = await query.CountAsync();
 
-                var whereClause = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
-
-                var query = @$"
-                    SELECT 
-                        m.Id, m.FirstName, m.LastName, m.FullName, m.Gender, m.DateOfBirth, 
-                        m.PhoneNumber, m.Email, m.Address, m.Occupation, m.MaritalStatus,
-                        m.HouseholdId, m.RankInChurch, m.ImmigrationStatus, m.DocumentExpiry,
-                        m.DateJoined, m.WelfareMemberId, m.IsFlagged, m.AbsentSince,
-                        m.AdditionalNotes, m.CreatedAt, m.UpdatedAt,
-                        h.Name as HouseholdName,
-                        wm.FullName as WelfareMemberName
-                    FROM Members m
-                    LEFT JOIN Households h ON m.HouseholdId = h.Id
-                    LEFT JOIN Members wm ON m.WelfareMemberId = wm.Id
-                    {whereClause}
-                    ORDER BY m.FullName
-                    OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY";
-
-                var countQuery = @$"
-                    SELECT COUNT(*) as TotalCount 
-                    FROM Members m
-                    LEFT JOIN Households h ON m.HouseholdId = h.Id
-                    {whereClause}";
-
-                // Get total count
-                await using var countCommand = new SqlCommand(countQuery, connection);
-                countCommand.Parameters.AddRange(parameters.ToArray());
-                var totalCount = (int?)await countCommand.ExecuteScalarAsync() ?? 0;
-
-                // Get members
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddRange(parameters.ToArray());
-                command.Parameters.Add(new SqlParameter("@Offset", offset));
-                command.Parameters.Add(new SqlParameter("@Limit", limit));
-
-                await using var reader = await command.ExecuteReaderAsync();
-                var members = new List<MemberResponse>();
-
-                while (await reader.ReadAsync())
-                {
-                    var member = new MemberResponse
+                var members = await query
+                    .OrderBy(m => m.FullName)
+                    .Skip(skip)
+                    .Take(limit)
+                    .Select(m => new MemberResponse
                     {
-                        Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                        FirstName = reader.GetString(reader.GetOrdinal("FirstName")),
-                        LastName = reader.GetString(reader.GetOrdinal("LastName")),
-                        FullName = reader.GetString(reader.GetOrdinal("FullName")),
-                        Gender = reader.GetString(reader.GetOrdinal("Gender")),
-                        DateOfBirth = reader.IsDBNull(reader.GetOrdinal("DateOfBirth")) ? null : reader.GetDateTime(reader.GetOrdinal("DateOfBirth")),
-                        PhoneNumber = reader.IsDBNull(reader.GetOrdinal("PhoneNumber")) ? null : reader.GetString(reader.GetOrdinal("PhoneNumber")),
-                        Email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
-                        HouseholdName = reader.IsDBNull(reader.GetOrdinal("HouseholdName")) ? null : reader.GetString(reader.GetOrdinal("HouseholdName")),
-                        WelfareMemberName = reader.IsDBNull(reader.GetOrdinal("WelfareMemberName")) ? null : reader.GetString(reader.GetOrdinal("WelfareMemberName")),
-                        IsFlagged = reader.GetBoolean(reader.GetOrdinal("IsFlagged")),
-                        AbsentSince = reader.IsDBNull(reader.GetOrdinal("AbsentSince")) ? null : reader.GetDateTime(reader.GetOrdinal("AbsentSince")),
-                        ImmigrationStatus = reader.IsDBNull(reader.GetOrdinal("ImmigrationStatus")) ? null : reader.GetString(reader.GetOrdinal("ImmigrationStatus")),
-                        DocumentExpiry = reader.IsDBNull(reader.GetOrdinal("DocumentExpiry")) ? null : reader.GetDateTime(reader.GetOrdinal("DocumentExpiry")),
-                        DateJoined = reader.IsDBNull(reader.GetOrdinal("DateJoined")) ? null : reader.GetDateTime(reader.GetOrdinal("DateJoined"))
-                    };
-                    members.Add(member);
-                }
+                        Id = m.Id,
+                        FirstName = m.FirstName,
+                        LastName = m.LastName,
+                        FullName = m.FullName,
+                        Gender = m.Gender,
+                        DateOfBirth = m.DateOfBirth,
+                        PhoneNumber = m.PhoneNumber,
+                        Email = m.Email,
+                        HouseholdName = m.Household != null ? m.Household.Name : null,
+                        WelfareMemberName = m.WelfareMember != null ? m.WelfareMember.FullName : null,
+                        IsFlagged = m.IsFlagged,
+                        AbsentSince = m.AbsentSince,
+                        ImmigrationStatus = m.ImmigrationStatus,
+                        DocumentExpiry = m.DocumentExpiry,
+                        DateJoined = m.DateJoined
+                    })
+                    .ToListAsync();
 
                 return Ok(new
                 {
@@ -139,189 +98,117 @@ namespace MembershipAppBEAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch members with search: {Search}", search);
+                _logger.LogError(ex, "Failed to fetch members");
                 return StatusCode(500, new { error = "Failed to fetch members" });
             }
         }
 
         [HttpPost]
-public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest request)
-{
-    if (request == null)
-    {
-        return BadRequest(new { error = "Request body is required" });
-    }
-
-    if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
-    {
-        return BadRequest(new { error = "First name and last name are required" });
-    }
-
-    await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-    
-    try
-    {
-        await connection.OpenAsync();
-
-        var query = @"
-            INSERT INTO Members (
-                FirstName, LastName, FullName, Gender, DateOfBirth, PhoneNumber, Email, 
-                Address, Occupation, MaritalStatus, HouseholdId, RankInChurch, ImmigrationStatus,
-                DocumentExpiry, DateJoined, WelfareMemberId, AdditionalNotes, IsActive, CreatedAt
-            ) 
-            OUTPUT INSERTED.Id, INSERTED.FirstName, INSERTED.LastName, INSERTED.FullName, 
-                   INSERTED.Gender, INSERTED.Email, INSERTED.PhoneNumber, INSERTED.HouseholdId,
-                   INSERTED.DateOfBirth, INSERTED.ImmigrationStatus, INSERTED.DateJoined
-            VALUES (
-                @FirstName, @LastName, @FullName, @Gender, @DateOfBirth, @PhoneNumber, @Email, 
-                @Address, @Occupation, @MaritalStatus, @HouseholdId, @RankInChurch, @ImmigrationStatus,
-                @DocumentExpiry, @DateJoined, @WelfareMemberId, @AdditionalNotes, 1, GETUTCDATE()
-            )";
-
-        await using var command = new SqlCommand(query, connection);
-
-        // Calculate full name if not provided
-        var fullName = string.IsNullOrWhiteSpace(request.FullName) 
-            ? $"{request.FirstName.Trim()} {request.LastName.Trim()}" 
-            : request.FullName.Trim();
-
-        // Handle DateOfBirth - accept both DateTime and string
-        DateTime? dateOfBirth = null;
-        if (request.DateOfBirth != null)
+        public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest request)
         {
-            if (request.DateOfBirth is DateTime dob)
+            if (request == null) return BadRequest(new { error = "Request body is required" });
+            if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+                return BadRequest(new { error = "First name and last name are required" });
+
+            try
             {
-                dateOfBirth = dob;
-            }
-            else if (request.DateOfBirth is string dobString && !string.IsNullOrWhiteSpace(dobString))
-            {
-                if (DateTime.TryParse(dobString, out var parsedDob))
+                var fullName = string.IsNullOrWhiteSpace(request.FullName)
+                    ? $"{request.FirstName.Trim()} {request.LastName.Trim()}"
+                    : request.FullName.Trim();
+
+                DateTime? dateOfBirth = null;
+                if (request.DateOfBirth != null)
                 {
-                    dateOfBirth = parsedDob;
-                }
-                else
-                {
-                    _logger.LogWarning("Could not parse DateOfBirth string: {DateString}", dobString);
-                }
-            }
-            else if (request.DateOfBirth is System.Text.Json.JsonElement jsonElement)
-            {
-                if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var dateString = jsonElement.GetString();
-                    if (DateTime.TryParse(dateString, out var parsedDob))
-                    {
+                    if (request.DateOfBirth is DateTime dob)
+                        dateOfBirth = dob;
+                    else if (DateTime.TryParse(request.DateOfBirth.ToString(), out var parsedDob))
                         dateOfBirth = parsedDob;
-                    }
                 }
+
+                var member = new Member
+                {
+                    FirstName = request.FirstName.Trim(),
+                    LastName = request.LastName.Trim(),
+                    Gender = request.Gender?.Trim() ?? "Unknown",
+                    DateOfBirth = dateOfBirth,
+                    PhoneNumber = request.PhoneNumber,
+                    Email = request.Email?.ToLower(),
+                    Address = request.Address,
+                    Occupation = request.Occupation,
+                    MaritalStatus = request.MaritalStatus,
+                    HouseholdId = request.HouseholdId,
+                    RankInChurch = request.RankInChurch,
+                    ImmigrationStatus = request.ImmigrationStatus,
+                    DocumentExpiry = request.DocumentExpiry,
+                    DateJoined = request.DateJoined ?? DateTime.UtcNow,
+                    WelfareMemberId = request.WelfareMemberId,
+                    AdditionalNotes = request.AdditionalNotes,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _dbContext.Members.Add(member);
+                await _dbContext.SaveChangesAsync();
+
+                return StatusCode(201, new
+                {
+                    member.Id,
+                    member.FirstName,
+                    member.LastName,
+                    member.FullName,
+                    member.Gender,
+                    member.Email,
+                    member.PhoneNumber,
+                    member.DateOfBirth,
+                    member.ImmigrationStatus,
+                    member.DateJoined,
+                    member.HouseholdId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create member: {FirstName} {LastName}", request.FirstName, request.LastName);
+                return StatusCode(500, new { error = "Failed to create member" });
             }
         }
-
-        // Add parameters
-        command.Parameters.AddWithValue("@FirstName", request.FirstName.Trim());
-        command.Parameters.AddWithValue("@LastName", request.LastName.Trim());
-        command.Parameters.AddWithValue("@FullName", fullName);
-        command.Parameters.AddWithValue("@Gender", request.Gender?.Trim() ?? "Unknown");
-        command.Parameters.AddWithValue("@DateOfBirth", dateOfBirth ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@PhoneNumber", request.PhoneNumber ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Email", request.Email ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Address", request.Address ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Occupation", request.Occupation ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@MaritalStatus", request.MaritalStatus ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@HouseholdId", request.HouseholdId ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@RankInChurch", request.RankInChurch ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@ImmigrationStatus", request.ImmigrationStatus ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@DocumentExpiry", request.DocumentExpiry ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@DateJoined", request.DateJoined ?? DateTime.UtcNow);
-        command.Parameters.AddWithValue("@WelfareMemberId", request.WelfareMemberId ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@AdditionalNotes", request.AdditionalNotes ?? (object)DBNull.Value);
-
-        await using var reader = await command.ExecuteReaderAsync();
-
-        if (await reader.ReadAsync())
-        {
-            var member = new
-            {
-                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                FirstName = reader.GetString(reader.GetOrdinal("FirstName")),
-                LastName = reader.GetString(reader.GetOrdinal("LastName")),
-                FullName = reader.GetString(reader.GetOrdinal("FullName")),
-                Gender = reader.GetString(reader.GetOrdinal("Gender")),
-                Email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
-                PhoneNumber = reader.IsDBNull(reader.GetOrdinal("PhoneNumber")) ? null : reader.GetString(reader.GetOrdinal("PhoneNumber")),
-                DateOfBirth = reader.IsDBNull(reader.GetOrdinal("DateOfBirth")) ? (DateTime?)null : reader.GetDateTime(reader.GetOrdinal("DateOfBirth")),
-                ImmigrationStatus = reader.IsDBNull(reader.GetOrdinal("ImmigrationStatus")) ? null : reader.GetString(reader.GetOrdinal("ImmigrationStatus")),
-                DateJoined = reader.IsDBNull(reader.GetOrdinal("DateJoined")) ? (DateTime?)null : reader.GetDateTime(reader.GetOrdinal("DateJoined")),
-                HouseholdId = reader.IsDBNull(reader.GetOrdinal("HouseholdId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("HouseholdId"))
-            };
-        
-            return StatusCode(201, member);
-        }
-
-        return BadRequest(new { error = "Failed to create member" });
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Failed to create member: {FirstName} {LastName}", request.FirstName, request.LastName);
-        return StatusCode(500, new { error = "Failed to create member" });
-    }
-}
         [HttpPost("upload")]
         public async Task<IActionResult> UploadMembersCSV(IFormFile file)
         {
             if (file == null || file.Length == 0)
-            {
                 return BadRequest(new { error = "No file uploaded" });
-            }
 
             if (!file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-            {
                 return BadRequest(new { error = "Only CSV files are allowed" });
-            }
 
-            if (file.Length > 25 * 1024 * 1024) // 25MB limit
-            {
+            if (file.Length > 25 * 1024 * 1024)
                 return BadRequest(new { error = "File size exceeds 25MB limit" });
-            }
 
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
-                
-                // Read CSV content
                 using var stream = new StreamReader(file.OpenReadStream());
                 var csvContent = await stream.ReadToEndAsync();
-                
                 var lines = csvContent.Split('\n').Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
+
                 if (lines.Length <= 1)
-                {
                     return BadRequest(new { error = "CSV file is empty or has no data rows" });
-                }
 
                 var headers = lines[0].Split(',').Select(h => h.Trim().ToLower()).ToArray();
-                
-                // Validate required columns
                 var requiredColumns = new[] { "firstname", "lastname", "gender" };
                 var missingColumns = requiredColumns.Where(rc => !headers.Contains(rc)).ToArray();
-                
+
                 if (missingColumns.Any())
-                {
                     return BadRequest(new { error = $"Missing required columns: {string.Join(", ", missingColumns)}" });
-                }
 
                 var successCount = 0;
                 var errorCount = 0;
                 var errors = new List<string>();
 
-                // Process each row
                 for (int i = 1; i < lines.Length; i++)
                 {
                     try
                     {
                         var values = ParseCsvLine(lines[i]);
-                        if (values.Length < requiredColumns.Length) 
+                        if (values.Length < requiredColumns.Length)
                         {
                             errorCount++;
                             errors.Add($"Row {i + 1}: Insufficient columns");
@@ -331,10 +218,9 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
                         var firstName = GetValueByHeader(headers, values, "firstname");
                         var lastName = GetValueByHeader(headers, values, "lastname");
                         var gender = GetValueByHeader(headers, values, "gender");
-                        
                         var phoneNumber = GetValueByHeader(headers, values, "phonenumber");
                         var email = GetValueByHeader(headers, values, "email");
-                        var dateOfBirth = GetValueByHeader(headers, values, "dateofbirth");
+                        var dateOfBirthStr = GetValueByHeader(headers, values, "dateofbirth");
                         var address = GetValueByHeader(headers, values, "address");
 
                         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
@@ -344,42 +230,47 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
                             continue;
                         }
 
-                        // Parse date if provided
-                        DateTime? dob = null;
-                        if (!string.IsNullOrWhiteSpace(dateOfBirth))
+                        DateTime? dateOfBirth = null;
+                        if (!string.IsNullOrWhiteSpace(dateOfBirthStr))
                         {
-                            if (DateTime.TryParse(dateOfBirth, out var parsedDob))
-                            {
-                                dob = parsedDob;
-                            }
-                            else
+                            if (!DateTime.TryParse(dateOfBirthStr, out var parsedDob))
                             {
                                 errorCount++;
                                 errors.Add($"Row {i + 1}: Invalid date format for Date of Birth");
                                 continue;
                             }
+                            dateOfBirth = parsedDob;
                         }
 
-                        // Insert member
-                        var insertQuery = @"
-                            INSERT INTO Members (
-                                FirstName, LastName, FullName, Gender, DateOfBirth, PhoneNumber, Email, 
-                                Address, IsActive, CreatedAt
-                            )
-                            VALUES (@FirstName, @LastName, @FullName, @Gender, @DateOfBirth, @PhoneNumber, 
-                                    @Email, @Address, 1, GETUTCDATE())";
+                        var fullName = $"{firstName.Trim()} {lastName.Trim()}";
 
-                        await using var command = new SqlCommand(insertQuery, connection);
-                        command.Parameters.AddWithValue("@FirstName", firstName.Trim());
-                        command.Parameters.AddWithValue("@LastName", lastName.Trim());
-                        command.Parameters.AddWithValue("@FullName", $"{firstName.Trim()} {lastName.Trim()}");
-                        command.Parameters.AddWithValue("@Gender", gender.Trim());
-                        command.Parameters.AddWithValue("@DateOfBirth", dob ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@PhoneNumber", string.IsNullOrEmpty(phoneNumber) ? (object)DBNull.Value : phoneNumber.Trim());
-                        command.Parameters.AddWithValue("@Email", string.IsNullOrEmpty(email) ? (object)DBNull.Value : email.Trim().ToLower());
-                        command.Parameters.AddWithValue("@Address", string.IsNullOrEmpty(address) ? (object)DBNull.Value : address.Trim());
+                        // Check if a member with the same email or phone exists (optional)
+                        var exists = await _dbContext.Members.AnyAsync(m =>
+                            m.IsActive &&
+                            (m.Email == email || m.PhoneNumber == phoneNumber));
 
-                        await command.ExecuteNonQueryAsync();
+                        if (exists)
+                        {
+                            errorCount++;
+                            errors.Add($"Row {i + 1}: Member with same email or phone already exists");
+                            continue;
+                        }
+
+                        // Add member using EF
+                        var member = new Member
+                        {
+                            FirstName = firstName.Trim(),
+                            LastName = lastName.Trim(),
+                            Gender = gender.Trim(),
+                            DateOfBirth = dateOfBirth,
+                            PhoneNumber = string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber.Trim(),
+                            Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLower(),
+                            Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim(),
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        _dbContext.Members.Add(member);
                         successCount++;
                     }
                     catch (Exception ex)
@@ -389,12 +280,15 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
                     }
                 }
 
-                return Ok(new 
-                { 
+                // Save all successfully added members at once
+                await _dbContext.SaveChangesAsync();
+
+                return Ok(new
+                {
                     message = $"CSV import completed. Success: {successCount}, Errors: {errorCount}",
                     successCount,
                     errorCount,
-                    errors = errors.Take(10).ToArray() // Return first 10 errors
+                    errors = errors.Take(10).ToArray()
                 });
             }
             catch (Exception ex)
@@ -442,64 +336,44 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
         [HttpGet("{id}")]
         public async Task<IActionResult> GetMember(int id)
         {
-            if (id <= 0)
-            {
-                return BadRequest(new { error = "Invalid member ID" });
-            }
+            if (id <= 0) return BadRequest(new { error = "Invalid member ID" });
 
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var member = await _dbContext.Members
+                    .Include(m => m.Household)
+                    .Include(m => m.WelfareMember)
+                    .Where(m => m.Id == id && m.IsActive)
+                    .Select(m => new MemberDetailResponse
+                    {
+                        Id = m.Id,
+                        FirstName = m.FirstName,
+                        LastName = m.LastName,
+                        FullName = m.FullName,
+                        Gender = m.Gender,
+                        DateOfBirth = m.DateOfBirth,
+                        PhoneNumber = m.PhoneNumber,
+                        Email = m.Email,
+                        Address = m.Address,
+                        Occupation = m.Occupation,
+                        MaritalStatus = m.MaritalStatus,
+                        HouseholdId = m.HouseholdId,
+                        HouseholdName = m.Household != null ? m.Household.Name : null,
+                        RankInChurch = m.RankInChurch,
+                        ImmigrationStatus = m.ImmigrationStatus,
+                        DocumentExpiry = m.DocumentExpiry,
+                        DateJoined = m.DateJoined,
+                        WelfareMemberId = m.WelfareMemberId,
+                        WelfareMemberName = m.WelfareMember != null ? m.WelfareMember.FullName : null,
+                        IsFlagged = m.IsFlagged,
+                        AbsentSince = m.AbsentSince,
+                        AdditionalNotes = m.AdditionalNotes,
+                        CreatedAt = m.CreatedAt,
+                        UpdatedAt = m.UpdatedAt
+                    })
+                    .FirstOrDefaultAsync();
 
-                var query = @"
-                    SELECT 
-                        m.*,
-                        h.Name as HouseholdName,
-                        wm.FullName as WelfareMemberName
-                    FROM Members m
-                    LEFT JOIN Households h ON m.HouseholdId = h.Id
-                    LEFT JOIN Members wm ON m.WelfareMemberId = wm.Id
-                    WHERE m.Id = @Id AND m.IsActive = 1";
-
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddWithValue("@Id", id);
-
-                await using var reader = await command.ExecuteReaderAsync();
-                
-                if (!await reader.ReadAsync())
-                {
-                    return NotFound(new { error = "Member not found" });
-                }
-
-                var member = new MemberDetailResponse
-                {
-                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                    FirstName = reader.GetString(reader.GetOrdinal("FirstName")),
-                    LastName = reader.GetString(reader.GetOrdinal("LastName")),
-                    FullName = reader.GetString(reader.GetOrdinal("FullName")),
-                    Gender = reader.GetString(reader.GetOrdinal("Gender")),
-                    DateOfBirth = reader.IsDBNull(reader.GetOrdinal("DateOfBirth")) ? null : reader.GetDateTime(reader.GetOrdinal("DateOfBirth")),
-                    PhoneNumber = reader.IsDBNull(reader.GetOrdinal("PhoneNumber")) ? null : reader.GetString(reader.GetOrdinal("PhoneNumber")),
-                    Email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
-                    Address = reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
-                    Occupation = reader.IsDBNull(reader.GetOrdinal("Occupation")) ? null : reader.GetString(reader.GetOrdinal("Occupation")),
-                    MaritalStatus = reader.IsDBNull(reader.GetOrdinal("MaritalStatus")) ? null : reader.GetString(reader.GetOrdinal("MaritalStatus")),
-                    HouseholdId = reader.IsDBNull(reader.GetOrdinal("HouseholdId")) ? null : reader.GetInt32(reader.GetOrdinal("HouseholdId")),
-                    HouseholdName = reader.IsDBNull(reader.GetOrdinal("HouseholdName")) ? null : reader.GetString(reader.GetOrdinal("HouseholdName")),
-                    RankInChurch = reader.IsDBNull(reader.GetOrdinal("RankInChurch")) ? null : reader.GetString(reader.GetOrdinal("RankInChurch")),
-                    ImmigrationStatus = reader.IsDBNull(reader.GetOrdinal("ImmigrationStatus")) ? null : reader.GetString(reader.GetOrdinal("ImmigrationStatus")),
-                    DocumentExpiry = reader.IsDBNull(reader.GetOrdinal("DocumentExpiry")) ? null : reader.GetDateTime(reader.GetOrdinal("DocumentExpiry")),
-                    DateJoined = reader.IsDBNull(reader.GetOrdinal("DateJoined")) ? null : reader.GetDateTime(reader.GetOrdinal("DateJoined")),
-                    WelfareMemberId = reader.IsDBNull(reader.GetOrdinal("WelfareMemberId")) ? null : reader.GetInt32(reader.GetOrdinal("WelfareMemberId")),
-                    WelfareMemberName = reader.IsDBNull(reader.GetOrdinal("WelfareMemberName")) ? null : reader.GetString(reader.GetOrdinal("WelfareMemberName")),
-                    IsFlagged = reader.GetBoolean(reader.GetOrdinal("IsFlagged")),
-                    AbsentSince = reader.IsDBNull(reader.GetOrdinal("AbsentSince")) ? null : reader.GetDateTime(reader.GetOrdinal("AbsentSince")),
-                    AdditionalNotes = reader.IsDBNull(reader.GetOrdinal("AdditionalNotes")) ? null : reader.GetString(reader.GetOrdinal("AdditionalNotes")),
-                    CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
-                    UpdatedAt = reader.IsDBNull(reader.GetOrdinal("UpdatedAt")) ? null : reader.GetDateTime(reader.GetOrdinal("UpdatedAt"))
-                };
+                if (member == null) return NotFound(new { error = "Member not found" });
 
                 return Ok(member);
             }
@@ -513,74 +387,37 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateMember(int id, [FromBody] MemberUpdateRequest request)
         {
-            if (id <= 0)
-            {
-                return BadRequest(new { error = "Invalid member ID" });
-            }
-
-            if (request == null)
-            {
-                return BadRequest(new { error = "Request body is required" });
-            }
-
+            if (id <= 0) return BadRequest(new { error = "Invalid member ID" });
+            if (request == null) return BadRequest(new { error = "Request body is required" });
             if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
-            {
                 return BadRequest(new { error = "First name and last name are required" });
-            }
 
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var member = await _dbContext.Members.FindAsync(id);
+                if (member == null || !member.IsActive) return NotFound(new { error = "Member not found" });
 
-                var query = @"
-                    UPDATE Members 
-                    SET FirstName = @FirstName, LastName = @LastName, FullName = @FullName, 
-                        Gender = @Gender, DateOfBirth = @DateOfBirth, PhoneNumber = @PhoneNumber, 
-                        Email = @Email, Address = @Address, Occupation = @Occupation, 
-                        MaritalStatus = @MaritalStatus, HouseholdId = @HouseholdId,
-                        RankInChurch = @RankInChurch, ImmigrationStatus = @ImmigrationStatus,
-                        DocumentExpiry = @DocumentExpiry, DateJoined = @DateJoined,
-                        WelfareMemberId = @WelfareMemberId, AdditionalNotes = @AdditionalNotes,
-                        IsFlagged = @IsFlagged, AbsentSince = @AbsentSince,
-                        UpdatedAt = GETUTCDATE()
-                    WHERE Id = @Id AND IsActive = 1";
+                member.FirstName = request.FirstName.Trim();
+                member.LastName = request.LastName.Trim();
+                member.Gender = request.Gender?.Trim() ?? "Unknown";
+                member.DateOfBirth = request.DateOfBirth;
+                member.PhoneNumber = request.PhoneNumber;
+                member.Email = request.Email;
+                member.Address = request.Address;
+                member.Occupation = request.Occupation;
+                member.MaritalStatus = request.MaritalStatus;
+                member.HouseholdId = request.HouseholdId;
+                member.RankInChurch = request.RankInChurch;
+                member.ImmigrationStatus = request.ImmigrationStatus;
+                member.DocumentExpiry = request.DocumentExpiry;
+                member.DateJoined = request.DateJoined;
+                member.WelfareMemberId = request.WelfareMemberId;
+                member.AdditionalNotes = request.AdditionalNotes;
+                member.IsFlagged = request.IsFlagged;
+                member.AbsentSince = request.AbsentSince;
+                member.UpdatedAt = DateTime.UtcNow;
 
-                await using var command = new SqlCommand(query, connection);
-                
-                // Calculate full name if not provided
-                var fullName = string.IsNullOrWhiteSpace(request.FullName) 
-                    ? $"{request.FirstName.Trim()} {request.LastName.Trim()}" 
-                    : request.FullName.Trim();
-
-                command.Parameters.AddWithValue("@Id", id);
-                command.Parameters.AddWithValue("@FirstName", request.FirstName.Trim());
-                command.Parameters.AddWithValue("@LastName", request.LastName.Trim());
-                command.Parameters.AddWithValue("@FullName", fullName);
-                command.Parameters.AddWithValue("@Gender", request.Gender?.Trim() ?? "Unknown");
-                command.Parameters.AddWithValue("@DateOfBirth", request.DateOfBirth ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@PhoneNumber", request.PhoneNumber ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@Email", request.Email ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@Address", request.Address ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@Occupation", request.Occupation ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@MaritalStatus", request.MaritalStatus ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@HouseholdId", request.HouseholdId ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@RankInChurch", request.RankInChurch ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@ImmigrationStatus", request.ImmigrationStatus ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@DocumentExpiry", request.DocumentExpiry ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@DateJoined", request.DateJoined ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@WelfareMemberId", request.WelfareMemberId ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@AdditionalNotes", request.AdditionalNotes ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@IsFlagged", request.IsFlagged);
-                command.Parameters.AddWithValue("@AbsentSince", request.AbsentSince ?? (object)DBNull.Value);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                
-                if (rowsAffected == 0)
-                {
-                    return NotFound(new { error = "Member not found" });
-                }
+                await _dbContext.SaveChangesAsync();
 
                 return Ok(new { message = "Member updated successfully" });
             }
@@ -594,32 +431,16 @@ public async Task<IActionResult> CreateMember([FromBody] MemberCreateRequest req
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteMember(int id)
         {
-            if (id <= 0)
-            {
-                return BadRequest(new { error = "Invalid member ID" });
-            }
+            if (id <= 0) return BadRequest(new { error = "Invalid member ID" });
 
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var member = await _dbContext.Members.FindAsync(id);
+                if (member == null || !member.IsActive) return NotFound(new { error = "Member not found" });
 
-                // Soft delete - set IsActive = 0
-                var query = @"
-                    UPDATE Members 
-                    SET IsActive = 0, UpdatedAt = GETUTCDATE()
-                    WHERE Id = @Id AND IsActive = 1";
-
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddWithValue("@Id", id);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                
-                if (rowsAffected == 0)
-                {
-                    return NotFound(new { error = "Member not found" });
-                }
+                member.IsActive = false;
+                member.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
 
                 return Ok(new { message = "Member deleted successfully" });
             }
