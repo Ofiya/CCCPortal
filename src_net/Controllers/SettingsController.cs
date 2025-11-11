@@ -1,6 +1,8 @@
+using MembershipAppBEAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 
 namespace MembershipAppBEAPI.Controllers
@@ -10,11 +12,13 @@ namespace MembershipAppBEAPI.Controllers
     [Authorize]
     public class SettingsController : ControllerBase
     {
+        private readonly ApplicationDbContext _dbContext;
         private readonly IConfiguration _configuration;
         private readonly ILogger<SettingsController> _logger;
 
-        public SettingsController(IConfiguration configuration, ILogger<SettingsController> logger)
+        public SettingsController(ApplicationDbContext dbContext, IConfiguration configuration, ILogger<SettingsController> logger)
         {
+            _dbContext = dbContext;
             _configuration = configuration;
             _logger = logger;
         }
@@ -22,38 +26,24 @@ namespace MembershipAppBEAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetSettings()
         {
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var settings = await _dbContext.Settings.FirstOrDefaultAsync();
 
-                var query = @"
-                    SELECT 
-                        ChurchName, ChurchAddress, ChurchPhone, ChurchEmail,
-                        CreatedAt, UpdatedAt
-                    FROM Settings 
-                    WHERE Id = 1"; // Assuming single settings record
+                if (settings == null)
+                    return NotFound(new { error = "Settings not found" });
 
-                await using var command = new SqlCommand(query, connection);
-                await using var reader = await command.ExecuteReaderAsync();
-                
-                if (await reader.ReadAsync())
+                var response = new
                 {
-                    var settings = new
-                    {
-                        ChurchName = reader.GetString(reader.GetOrdinal("ChurchName")),
-                        ChurchAddress = reader.GetString(reader.GetOrdinal("ChurchAddress")),
-                        ChurchPhone = reader.IsDBNull(reader.GetOrdinal("ChurchPhone")) ? null : reader.GetString(reader.GetOrdinal("ChurchPhone")),
-                        ChurchEmail = reader.IsDBNull(reader.GetOrdinal("ChurchEmail")) ? null : reader.GetString(reader.GetOrdinal("ChurchEmail")),
-                        CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
-                        UpdatedAt = reader.IsDBNull(reader.GetOrdinal("UpdatedAt")) ? (DateTime?)null : reader.GetDateTime(reader.GetOrdinal("UpdatedAt"))
-                    };
+                    settings.ChurchName,
+                    settings.ChurchAddress,
+                    settings.ChurchPhone,
+                    settings.ChurchEmail,
+                    settings.CreatedAt,
+                    settings.UpdatedAt
+                };
 
-                    return Ok(settings);
-                }
-
-                return NotFound(new { error = "Settings not found" });
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -67,52 +57,42 @@ namespace MembershipAppBEAPI.Controllers
         public async Task<IActionResult> UpdateSettings([FromBody] SettingsUpdateRequest request)
         {
             if (request == null)
-            {
                 return BadRequest(new { error = "Request body is required" });
-            }
 
             if (string.IsNullOrWhiteSpace(request.ChurchName))
-            {
                 return BadRequest(new { error = "Church name is required" });
-            }
 
-            await using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            
             try
             {
-                await connection.OpenAsync();
+                var settings = await _dbContext.Settings.FirstOrDefaultAsync();
 
-                var query = @"
-                    UPDATE Settings 
-                    SET ChurchName = @ChurchName, ChurchAddress = @ChurchAddress, 
-                        ChurchPhone = @ChurchPhone, ChurchEmail = @ChurchEmail,
-                        UpdatedAt = GETUTCDATE()
-                    WHERE Id = 1";
-
-                await using var command = new SqlCommand(query, connection);
-                command.Parameters.AddWithValue("@ChurchName", request.ChurchName.Trim());
-                command.Parameters.AddWithValue("@ChurchAddress", request.ChurchAddress?.Trim() ?? "");
-                command.Parameters.AddWithValue("@ChurchPhone", request.ChurchPhone?.Trim() ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@ChurchEmail", request.ChurchEmail?.Trim() ?? (object)DBNull.Value);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                
-                if (rowsAffected == 0)
+                if (settings == null)
                 {
-                    // Create settings if they don't exist
-                    var createQuery = @"
-                        INSERT INTO Settings (ChurchName, ChurchAddress, ChurchPhone, ChurchEmail, CreatedAt)
-                        VALUES (@ChurchName, @ChurchAddress, @ChurchPhone, @ChurchEmail, GETUTCDATE())";
-                    
-                    await using var createCommand = new SqlCommand(createQuery, connection);
-                    createCommand.Parameters.AddWithValue("@ChurchName", request.ChurchName.Trim());
-                    createCommand.Parameters.AddWithValue("@ChurchAddress", request.ChurchAddress?.Trim() ?? "");
-                    createCommand.Parameters.AddWithValue("@ChurchPhone", request.ChurchPhone?.Trim() ?? (object)DBNull.Value);
-                    createCommand.Parameters.AddWithValue("@ChurchEmail", request.ChurchEmail?.Trim() ?? (object)DBNull.Value);
+                    // Create new settings
+                    settings = new Settings
+                    {
+                        ChurchName = request.ChurchName.Trim(),
+                        ChurchAddress = request.ChurchAddress?.Trim() ?? string.Empty,
+                        ChurchPhone = string.IsNullOrWhiteSpace(request.ChurchPhone) ? null : request.ChurchPhone.Trim(),
+                        ChurchEmail = string.IsNullOrWhiteSpace(request.ChurchEmail) ? null : request.ChurchEmail.Trim(),
+                        CreatedAt = DateTime.UtcNow
+                    };
 
-                    await createCommand.ExecuteNonQueryAsync();
+                    _dbContext.Settings.Add(settings);
+                }
+                else
+                {
+                    // Update existing settings
+                    settings.ChurchName = request.ChurchName.Trim();
+                    settings.ChurchAddress = request.ChurchAddress?.Trim() ?? string.Empty;
+                    settings.ChurchPhone = string.IsNullOrWhiteSpace(request.ChurchPhone) ? null : request.ChurchPhone.Trim();
+                    settings.ChurchEmail = string.IsNullOrWhiteSpace(request.ChurchEmail) ? null : request.ChurchEmail.Trim();
+                    settings.UpdatedAt = DateTime.UtcNow;
+
+                    _dbContext.Settings.Update(settings);
                 }
 
+                await _dbContext.SaveChangesAsync();
                 return Ok(new { message = "Settings updated successfully" });
             }
             catch (Exception ex)

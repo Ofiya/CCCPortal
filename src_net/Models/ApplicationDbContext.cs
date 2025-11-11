@@ -8,16 +8,45 @@ namespace MembershipAppBEAPI.Models
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
         {
         }
-       
 
 
+        public DbSet<MemberFollowUp> MemberFollowUps { get; set; }
+        public DbSet<Settings> Settings { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Member> Members { get; set; }
+        public DbSet<Attendance> Attendance { get; set; }
+        public DbSet<Household> Households { get; set; }
         public DbSet<Church> Churches { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<User>();
+
+            // Attendance: One member, many attendance records
+            modelBuilder.Entity<Attendance>()
+                .HasOne(a => a.Member)
+                .WithMany(m => m.AttendanceRecords)
+                .HasForeignKey(a => a.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Household: One household, many members
+            modelBuilder.Entity<Member>()
+                .HasOne(m => m.Household)
+                .WithMany(h => h.Members)
+                .HasForeignKey(m => m.HouseholdId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Indexes for performance
+            modelBuilder.Entity<Member>()
+                .HasIndex(m => m.FullName);
+
+            modelBuilder.Entity<Attendance>()
+                .HasIndex(a => new { a.MemberId, a.ServiceDate })
+                .IsUnique();
+
+
 
             //modelBuilder.Entity<User>().HasData(
             //    new User
