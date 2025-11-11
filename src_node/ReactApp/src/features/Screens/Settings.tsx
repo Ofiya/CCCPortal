@@ -1,8 +1,14 @@
+import { useState } from "react";
 import { useAxios } from "../../utils/hooks/useAxios";
+import AppDialog from "../../components/modals/AppDialog";
+import AddUserModal from "../../components/modals/AddUserModal";
 
 const Settings = () => {
       const { data, loading, error } = useAxios("Users");
       console.log(data, loading, error)
+
+          const [open, setOpen] = useState(false);
+
       
     return (
        <div id="settings-page" className="page p-6 admin-only-content">
@@ -48,7 +54,7 @@ const Settings = () => {
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">User Management</h3>
               <p className="text-sm text-gray-600 mb-4">Manage access levels and user permissions</p>
-              <button id="add-user-btn" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md mb-4">
+              <button onClick={() => setOpen(true)} id="add-user-btn" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md mb-4">
                 Add New User
               </button>
               <div className="space-y-3" id="users-list">
@@ -140,6 +146,13 @@ const Settings = () => {
               </div>
             </div>
           </div>
+          <AppDialog
+                isOpen={open}
+                onClose={() => setOpen(false)}
+            >
+
+                <AddUserModal />
+            </AppDialog>
         </div>
     )
 }
