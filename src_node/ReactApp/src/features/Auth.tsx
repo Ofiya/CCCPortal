@@ -19,8 +19,9 @@ const Auth: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        // navigate("/dashboard");
         
-        axios.post("https://redemptionfe.azurewebsites.net/api/Auth/login", {
+        axios.post("https://cccredemption-czeqeud7e5hqf2cc.canadacentral-01.azurewebsites.net/api/Auth/login", {
             email: formData.email,
             password: formData.password,
         }).then((response) => {
@@ -29,7 +30,6 @@ const Auth: React.FC = () => {
         }).catch((error) => {
             console.error("There was an error!", error);
         });
-
     }
 
 

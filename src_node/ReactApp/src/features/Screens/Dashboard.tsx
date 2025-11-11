@@ -10,7 +10,7 @@ const Dashboard = () => {
 
     return (
         <div id="dashboard-page" className="page p-6">
-            <div className="mb-6 font-bold">
+            <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
                 <p className="text-gray-600">Overview of CCC Redemption Parish</p>
             </div>
