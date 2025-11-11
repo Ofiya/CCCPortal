@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import axios from "axios";
 
 const Auth: React.FC = () => {
-    const navigate = useNavigate();
+    const nav = useNavigate();
     const [formData, setFormData] = useState({
         email: '',
         password: '',
@@ -19,14 +19,14 @@ const Auth: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        // navigate("/dashboard");
+        // nav("/dashboard");
         
         axios.post("https://cccredemption-czeqeud7e5hqf2cc.canadacentral-01.azurewebsites.net/api/Auth/login", {
             email: formData.email,
             password: formData.password,
         }).then((response) => {
             console.log(response.data);
-            navigate("/dashboard");
+            nav("/dashboard");
         }).catch((error) => {
             console.error("There was an error!", error);
         });
