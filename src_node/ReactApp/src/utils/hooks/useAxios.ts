@@ -11,21 +11,34 @@ interface UseAxiosOptions {
   headers?: Record<string, string>;
 }
 
-export function useAxios(url: string, options:UseAxiosOptions = {}) {
+export function useAxios(url: string, options: UseAxiosOptions = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const getAuthHeaders = () => {
+    const token = options.token || localStorage.getItem("Token");
+    const headers: Record<string, string> = options.headers || {};
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return headers;
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const response = await axios({
         url: `${BASE_URL}${url}`,
-        ...options
+        method: options.method || "GET",
+        data: options.body,
+        headers: getAuthHeaders(),
       });
       setData(response.data);
       setError(null);
-    } catch (err:any) {
+    } catch (err: any) {
       setError(err.response?.data?.message || err.message);
     } finally {
       setLoading(false);
@@ -34,7 +47,7 @@ export function useAxios(url: string, options:UseAxiosOptions = {}) {
 
   useEffect(() => {
     fetchData();
-  }, [url]); // Re-fetch when URL changes
+  }, [url, options.token]);
 
-  return { data, loading, error };
+  return { data, loading, error, refetch: fetchData };
 }

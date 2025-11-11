@@ -26,6 +26,8 @@ const Auth: React.FC = () => {
             password: formData.password,
         }).then((response) => {
             console.log(response.data);
+            localStorage.setItem("Token", response.data.token);
+            localStorage.setItem("User", JSON.stringify(response.data.user));
             nav("/dashboard");
         }).catch((error) => {
             console.error("There was an error!", error);

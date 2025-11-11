@@ -1,4 +1,17 @@
+import { useState } from "react";
+import { useNavigate } from "react-router";
+
 const NavBar = () => {
+
+    const nav = useNavigate()
+    const [showNavdropdown, setShowNavdropdown] = useState(false);
+
+    const handleLogout = () => {
+        localStorage.removeItem("Token")
+        localStorage.removeItem("User")
+        nav("/auth")
+    }
+
     return (
         <header className="sticky top-0 bg-white shadow-sm z-10">
             <div className="flex justify-between items-center px-4 py-3">
@@ -10,17 +23,17 @@ const NavBar = () => {
                 </div>
                 <div className="flex items-center space-x-4">
                     <div className="dropdown">
-                        <button id="user-menu-button" className="flex items-center focus:outline-none">
+                        <button onClick={() => setShowNavdropdown(!showNavdropdown)} id="user-menu-button" className="flex items-center focus:outline-none">
                             <span className="mr-2 text-sm font-medium text-gray-700 hidden sm:block" id="user-name">Admin User</span>
                             <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
                                 A
                             </div>
                         </button>
-                        <div className="dropdown-menu bg-white shadow-lg rounded-md py-1">
+                        {showNavdropdown && <div className="absolute top-10 bg-white shadow-lg rounded-md py-1">
                             <a href="javascript:void(0)" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Profile</a>
                             <a href="javascript:void(0)" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
-                            <a id="logout-button" href="javascript:void(0)" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</a>
-                        </div>
+                            <button id="logout-button" onClick={() => handleLogout()} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</button>
+                        </div>}
                     </div>
                 </div>
             </div>

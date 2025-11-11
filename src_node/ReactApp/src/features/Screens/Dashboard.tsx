@@ -1,12 +1,27 @@
+// @ts-nocheck
+xx
 import { useNavigate } from "react-router"
 import { useAxios } from "../../utils/hooks/useAxios";
+import Loading from "../../components/Layout/Loader/Loading";
+import BarChart from "../../components/Charts/Barchart";
 // import "../../utils/main"
 
 const Dashboard = () => {
-    
+
+
+
+
     const navigate = useNavigate()
     const { data, loading, error } = useAxios("Dashboard/stats");
     console.log(data, loading, error)
+
+    if (loading) {
+        return (
+            <div className="h-screen flex items-center justify-center">
+                <Loading />
+            </div>
+        )
+    }
 
     return (
         <div id="dashboard-page" className="page p-6">
@@ -24,7 +39,7 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-4">
                             <h3 className="text-sm font-medium text-gray-500">Total Members</h3>
-                            <p className="text-2xl font-semibold text-gray-800" id="total-members">0</p>
+                            <p className="text-2xl font-semibold text-gray-800" id="total-members">{data?.totalMembers}</p>
                         </div>
                     </div>
                 </div>
@@ -37,7 +52,7 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-4">
                             <h3 className="text-sm font-medium text-gray-500">Attendance Rate</h3>
-                            <p className="text-2xl font-semibold text-gray-800" id="attendance-rate">0%</p>
+                            <p className="text-2xl font-semibold text-gray-800" id="attendance-rate">{data?.attendanceRate}%</p>
                         </div>
                     </div>
                 </div>
@@ -50,7 +65,7 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-4">
                             <h3 className="text-sm font-medium text-gray-500">Flagged Members</h3>
-                            <p className="text-2xl font-semibold text-gray-800" id="flagged-members">0</p>
+                            <p className="text-2xl font-semibold text-gray-800" id="flagged-members">{data?.flaggedMembers}</p>
                         </div>
                     </div>
                 </div>
@@ -63,7 +78,7 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-4">
                             <h3 className="text-sm font-medium text-gray-500">Expiring Documents</h3>
-                            <p className="text-2xl font-semibold text-gray-800" id="expiring-documents">0</p>
+                            <p className="text-2xl font-semibold text-gray-800" id="expiring-documents">{data?.expiringDocuments}</p>
                         </div>
                     </div>
                 </div>
@@ -74,7 +89,7 @@ const Dashboard = () => {
                 <div className="bg-white rounded-lg shadow p-6">
                     <h3 className="text-lg font-semibold text-gray-800 mb-4">Attendance Analytics</h3>
                     <div className="h-64">
-                        <canvas id="attendance-chart"></canvas>
+                        <BarChart />
                     </div>
                 </div>
 
