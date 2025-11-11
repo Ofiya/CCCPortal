@@ -1,5 +1,4 @@
 // @ts-nocheck
-xx
 import { useNavigate } from "react-router"
 import { useAxios } from "../../utils/hooks/useAxios";
 import Loading from "../../components/Layout/Loader/Loading";
@@ -13,6 +12,8 @@ const Dashboard = () => {
 
     const navigate = useNavigate()
     const { data, loading, error } = useAxios("Dashboard/stats");
+    const { data:BirthDayData, loading:BirthDayLoading, error:BirthDayError } = useAxios("Dashboard/birthdays");
+    const { data:WelfareData, loading:WelfareLoading, error:WelfareError } = useAxios("Dashboard/welfare");
     console.log(data, loading, error)
 
     if (loading) {
@@ -20,6 +21,10 @@ const Dashboard = () => {
             <div className="h-screen flex items-center justify-center">
                 <Loading />
             </div>
+        )
+    } else if (error) {
+        return (
+            <div>An Error Occured</div>
         )
     }
 
